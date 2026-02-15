@@ -1,0 +1,36 @@
+# 빌드 결과물
+target/
+
+# 환경변수 (시크릿 유출 방지)
+.env
+.env.local
+.env.production
+
+# VCS
+.git/
+.gitignore
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# 문서 (빌드에 불필요)
+*.md
+docs/
+README.md
+
+# 테스트 (빌드에 불필요 — cargo build --release는 테스트를 빌드하지 않음)
+tests/
+
+# CI
+.github/
+ci/
+
+# Claude Code
+.claude/
+
+# 기타
+.coderabbit.yaml
+.gitattributes
+scripts/
