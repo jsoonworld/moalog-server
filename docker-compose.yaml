@@ -197,8 +197,11 @@ services:
   mysqld-exporter:
     image: prom/mysqld-exporter:v0.16.0
     container_name: mysqld-exporter
+    command:
+      - "--mysqld.address=mysql:3306"
+      - "--mysqld.username=exporter"
     environment:
-      DATA_SOURCE_NAME: "exporter:exporter_password@(mysql:3306)/"
+      MYSQLD_EXPORTER_PASSWORD: "exporter_password"
     ports:
       - "9104:9104"
     depends_on:
