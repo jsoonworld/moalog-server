@@ -1,0 +1,53 @@
+services:
+  # ─── MySQL ────────────────────────────────────────────
+  mysql:
+    image: mysql:8.0
+    container_name: moalog-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-moalog_local}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-retrospect}
+      MYSQL_CHARSET: utf8mb4
+      MYSQL_COLLATION: utf8mb4_unicode_ci
+    ports:
+      - "${MYSQL_PORT:-3306}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-moalog_local}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ─── moalog-server ───────────────────────────────────
+  moalog-server:
+    build:
+      context: ./codes/server
+      dockerfile: Dockerfile
+    container_name: moalog-server
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: mysql://root:${MYSQL_ROOT_PASSWORD:-moalog_local}@mysql:3306/${MYSQL_DATABASE:-retrospect}
+      DB_SCHEMA_UPDATE: "true"
+      SERVER_PORT: ${SERVER_PORT:-8080}
+      JWT_SECRET: ${JWT_SECRET:-local_dev_secret}
+      JWT_EXPIRATION: ${JWT_EXPIRATION:-1800}
+      REFRESH_TOKEN_EXPIRATION: ${REFRESH_TOKEN_EXPIRATION:-1209600}
+      SIGNUP_TOKEN_EXPIRATION: ${SIGNUP_TOKEN_EXPIRATION:-600}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      KAKAO_CLIENT_ID: ${KAKAO_CLIENT_ID:-}
+      KAKAO_CLIENT_SECRET: ${KAKAO_CLIENT_SECRET:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:5173,http://localhost:5174}
+      PDF_FONT_DIR: /app/fonts
+      PDF_FONT_FAMILY: NanumGothic
+      RUST_LOG: ${RUST_LOG:-info,server=debug}
+    ports:
+      - "${SERVER_PORT:-8080}:8080"
+    restart: unless-stopped
+
+volumes:
+  mysql_data:
