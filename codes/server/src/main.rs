@@ -254,8 +254,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ai_service,
     };
 
-    // CORS 설정
-    let allowed_origins = [
+    // CORS 설정 — ALLOWED_ORIGINS 환경변수에서 읽기 (미설정 시 기본값 사용)
+    let default_origins = [
         "http://localhost:3000",
         "http://localhost:5173",
         "http://localhost:5174",
@@ -264,13 +264,35 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "https://moaofficial.kr",
     ];
 
-    let cors = CorsLayer::new()
-        .allow_origin(
-            allowed_origins
+    let origins: Vec<HeaderValue> = match std::env::var("ALLOWED_ORIGINS") {
+        Ok(val) if !val.trim().is_empty() => {
+            val.split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .filter_map(|origin| {
+                    match origin.parse::<HeaderValue>() {
+                        Ok(hv) => Some(hv),
+                        Err(_) => {
+                            warn!("ALLOWED_ORIGINS에 유효하지 않은 오리진이 포함되어 무시합니다: {}", origin);
+                            None
+                        }
+                    }
+                })
+                .collect()
+        }
+        _ => {
+            info!("ALLOWED_ORIGINS 환경변수가 설정되지 않았습니다. 기본 오리진을 사용합니다.");
+            default_origins
                 .iter()
                 .filter_map(|origin| origin.parse::<HeaderValue>().ok())
-                .collect::<Vec<_>>(),
-        )
+                .collect()
+        }
+    };
+
+    info!("CORS 허용 오리진 수: {}", origins.len());
+
+    let cors = CorsLayer::new()
+        .allow_origin(origins)
         .allow_methods([
             Method::GET,
             Method::POST,
