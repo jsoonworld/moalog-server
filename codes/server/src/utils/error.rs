@@ -167,6 +167,26 @@ pub enum AppError {
 
     /// RATE4291: 요청 한도 초과 (429)
     RateLimitExceeded(String),
+
+    // ============== Payment 관련 에러 ==============
+    /// PAY4001: 잘못된 플랜 (400)
+    InvalidPlan(String),
+
+    /// PAY4031: 유료 플랜 필요 (403)
+    #[allow(dead_code)]
+    SubscriptionRequired(String),
+
+    /// PAY4041: 구독 없음 (404)
+    SubscriptionNotFound(String),
+
+    /// PAY4091: 이미 활성 구독 (409)
+    SubscriptionAlreadyActive(String),
+
+    /// PAY5001: 결제 처리 실패 (500)
+    PaymentFailed(String),
+
+    /// PAY5021: FluxPay 서비스 연결 오류 (502)
+    FluxPayServiceError(String),
 }
 
 impl AppError {
@@ -224,6 +244,15 @@ impl AppError {
             AppError::RetroDeleteAccessDenied(msg) => msg.clone(),
             AppError::MemberNotFound(msg) => msg.clone(),
             AppError::RateLimitExceeded(msg) => msg.clone(),
+            // Payment 관련
+            AppError::InvalidPlan(msg) => msg.clone(),
+            AppError::SubscriptionRequired(msg) => msg.clone(),
+            AppError::SubscriptionNotFound(msg) => msg.clone(),
+            AppError::SubscriptionAlreadyActive(msg) => msg.clone(),
+            AppError::PaymentFailed(_) => "결제 처리 중 오류가 발생했습니다.".to_string(),
+            AppError::FluxPayServiceError(_) => {
+                "결제 서비스에 연결할 수 없습니다.".to_string()
+            }
         }
     }
 
@@ -281,6 +310,13 @@ impl AppError {
             AppError::RetroDeleteAccessDenied(_) => "RETRO4031",
             AppError::MemberNotFound(_) => "MEMBER4042",
             AppError::RateLimitExceeded(_) => "RATE4291",
+            // Payment 관련
+            AppError::InvalidPlan(_) => "PAY4001",
+            AppError::SubscriptionRequired(_) => "PAY4031",
+            AppError::SubscriptionNotFound(_) => "PAY4041",
+            AppError::SubscriptionAlreadyActive(_) => "PAY4091",
+            AppError::PaymentFailed(_) => "PAY5001",
+            AppError::FluxPayServiceError(_) => "PAY5021",
         }
     }
 
@@ -338,6 +374,13 @@ impl AppError {
             AppError::RetroDeleteAccessDenied(_) => StatusCode::FORBIDDEN,
             AppError::MemberNotFound(_) => StatusCode::NOT_FOUND,
             AppError::RateLimitExceeded(_) => StatusCode::TOO_MANY_REQUESTS,
+            // Payment 관련
+            AppError::InvalidPlan(_) => StatusCode::BAD_REQUEST,
+            AppError::SubscriptionRequired(_) => StatusCode::FORBIDDEN,
+            AppError::SubscriptionNotFound(_) => StatusCode::NOT_FOUND,
+            AppError::SubscriptionAlreadyActive(_) => StatusCode::CONFLICT,
+            AppError::PaymentFailed(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            AppError::FluxPayServiceError(_) => StatusCode::BAD_GATEWAY,
         }
     }
 }
@@ -376,6 +419,12 @@ impl IntoResponse for AppError {
             }
             AppError::RateLimitExceeded(msg) => {
                 tracing::warn!(error_code = %error_code, "Rate limit exceeded: {}", msg);
+            }
+            AppError::PaymentFailed(msg) => {
+                error!(error_code = %error_code, "Payment failed: {}", msg);
+            }
+            AppError::FluxPayServiceError(msg) => {
+                error!(error_code = %error_code, "FluxPay service error: {}", msg);
             }
             _ => {
                 error!(error_code = %error_code, "Error: {}", message);

@@ -1,5 +1,6 @@
 use crate::domain::{
     member::entity::{assistant_usage, member, member_response, member_retro, member_retro_room},
+    payment::entity::member_subscription,
     retrospect::entity::{
         response, response_comment, response_like, retro_reference, retro_room, retrospect,
     },
@@ -75,6 +76,16 @@ async fn create_tables(db: &DatabaseConnection) -> Result<(), DbErr> {
     .await?;
     create_table_if_not_exists(db, &schema, member_response::Entity).await?;
     create_table_if_not_exists(db, &schema, member_retro::Entity).await?;
+
+    // 5. Payment 관련 테이블
+    create_table_if_not_exists(db, &schema, member_subscription::Entity).await?;
+    create_index_if_not_exists(
+        db,
+        "idx_member_subscription_member_status",
+        "member_subscription",
+        &["member_id", "status"],
+    )
+    .await?;
 
     // Apply migrations for existing tables
     apply_migrations(db).await?;

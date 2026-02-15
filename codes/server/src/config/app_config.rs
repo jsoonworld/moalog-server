@@ -22,6 +22,10 @@ pub struct AppConfig {
     // Rate Limiting
     pub rate_limiter_url: String,
     pub rate_limiter_enabled: bool,
+
+    // FluxPay
+    pub fluxpay_url: String,
+    pub fluxpay_enabled: bool,
 }
 
 impl AppConfig {
@@ -91,6 +95,13 @@ impl AppConfig {
             .parse()
             .unwrap_or(true);
 
+        let fluxpay_url = env::var("FLUXPAY_URL")
+            .unwrap_or_else(|_| "http://localhost:8081".to_string());
+        let fluxpay_enabled = env::var("FLUXPAY_ENABLED")
+            .unwrap_or_else(|_| "true".to_string())
+            .parse()
+            .unwrap_or(true);
+
         Ok(Self {
             server_port,
             jwt_secret,
@@ -104,6 +115,8 @@ impl AppConfig {
             openai_api_key,
             rate_limiter_url,
             rate_limiter_enabled,
+            fluxpay_url,
+            fluxpay_enabled,
         })
     }
 }

@@ -22,6 +22,7 @@ use crate::domain::retrospect::entity::response_like;
 use crate::domain::retrospect::entity::retro_reference;
 use crate::domain::retrospect::entity::retro_room;
 use crate::domain::retrospect::entity::retrospect;
+use crate::domain::payment::service::PaymentService;
 use crate::state::AppState;
 use crate::utils::error::AppError;
 
@@ -2469,10 +2470,14 @@ impl RetrospectService {
             .map_err(|e| AppError::InternalError(e.to_string()))?
             as i32;
 
-        if monthly_analysis_count >= 10 {
-            return Err(AppError::AiMonthlyLimitExceeded(
-                "월간 분석 가능 횟수를 초과하였습니다.".to_string(),
-            ));
+        // 플랜 기반 분석 제한 확인
+        let plan = PaymentService::get_member_plan(&state, user_id).await?;
+        if let Some(limit) = plan.ai_analysis_limit() {
+            if monthly_analysis_count >= limit {
+                return Err(AppError::AiMonthlyLimitExceeded(
+                    "월간 분석 가능 횟수를 초과하였습니다.".to_string(),
+                ));
+            }
         }
 
         // 5. 최소 데이터 기준 확인
@@ -3314,10 +3319,15 @@ impl RetrospectService {
             .map_err(|e| AppError::InternalError(e.to_string()))?
             as i32;
 
-        if pre_check_count >= 10 {
-            return Err(AppError::AiAssistantLimitExceeded(
-                "이번 달 회고 어시스턴트 사용 횟수를 모두 사용했습니다.".to_string(),
-            ));
+        // 플랜 기반 어시스턴트 제한 확인
+        let plan = PaymentService::get_member_plan(&state, user_id).await?;
+        let assistant_limit = plan.ai_assistant_limit();
+        if let Some(limit) = assistant_limit {
+            if pre_check_count >= limit {
+                return Err(AppError::AiAssistantLimitExceeded(
+                    "이번 달 회고 어시스턴트 사용 횟수를 모두 사용했습니다.".to_string(),
+                ));
+            }
         }
 
         // 6. 질문 내용 조회
@@ -3364,14 +3374,17 @@ impl RetrospectService {
             .await
             .map_err(|e| AppError::InternalError(e.to_string()))? as i32;
 
-        if final_count > 10 {
-            // 동시 요청으로 인한 초과 - 롤백
-            txn.rollback()
-                .await
-                .map_err(|e| AppError::InternalError(e.to_string()))?;
-            return Err(AppError::AiAssistantLimitExceeded(
-                "이번 달 회고 어시스턴트 사용 횟수를 모두 사용했습니다.".to_string(),
-            ));
+        // 플랜 제한에 따라 최종 검증
+        if let Some(limit) = assistant_limit {
+            if final_count > limit {
+                // 동시 요청으로 인한 초과 - 롤백
+                txn.rollback()
+                    .await
+                    .map_err(|e| AppError::InternalError(e.to_string()))?;
+                return Err(AppError::AiAssistantLimitExceeded(
+                    "이번 달 회고 어시스턴트 사용 횟수를 모두 사용했습니다.".to_string(),
+                ));
+            }
         }
 
         txn.commit()
@@ -3385,8 +3398,11 @@ impl RetrospectService {
             GuideType::Personalized
         };
 
-        // 10. 남은 사용 횟수 계산 (트랜잭션 커밋 후 실제 카운트 기반)
-        let remaining_count = 10 - final_count;
+        // 10. 남은 사용 횟수 계산 (무제한 플랜은 -1 반환)
+        let remaining_count = match assistant_limit {
+            Some(limit) => limit - final_count,
+            None => -1, // 무제한
+        };
 
         info!(
             retrospect_id = retrospect_id,

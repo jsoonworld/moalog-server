@@ -29,6 +29,12 @@ use crate::domain::auth::dto::{
 use crate::domain::member::dto::{
     MemberProfileResponse, SuccessProfileResponse, SuccessWithdrawResponse,
 };
+use crate::domain::payment::dto::{
+    CreateSubscriptionRequest, FluxPayWebhookPayload, PlanResponse, SubscriptionResponse,
+    SuccessCancelResponse, SuccessPlansResponse, SuccessSubscriptionResponse,
+};
+use crate::domain::payment::entity::member_subscription::SubscriptionStatus;
+use crate::domain::payment::entity::subscription_plan::PlanName;
 use crate::domain::member::entity::member_retro::RetrospectStatus;
 use crate::domain::retrospect::dto::{
     AnalysisResponse, AssistantRequest, AssistantResponse, CommentItem, CreateCommentRequest,
@@ -95,7 +101,13 @@ use crate::utils::{BaseResponse, ErrorResponse};
         domain::retrospect::handler::assistant_guide,
         // Member APIs
         domain::member::handler::get_profile,
-        domain::member::handler::withdraw
+        domain::member::handler::withdraw,
+        // Payment APIs
+        domain::payment::handler::list_plans,
+        domain::payment::handler::get_subscription,
+        domain::payment::handler::create_subscription,
+        domain::payment::handler::cancel_subscription,
+        domain::payment::handler::handle_fluxpay_webhook
     ),
     components(
         schemas(
@@ -193,7 +205,17 @@ use crate::utils::{BaseResponse, ErrorResponse};
             // Member DTOs
             MemberProfileResponse,
             SuccessProfileResponse,
-            SuccessWithdrawResponse
+            SuccessWithdrawResponse,
+            // Payment DTOs
+            PlanName,
+            SubscriptionStatus,
+            CreateSubscriptionRequest,
+            FluxPayWebhookPayload,
+            PlanResponse,
+            SubscriptionResponse,
+            SuccessPlansResponse,
+            SuccessSubscriptionResponse,
+            SuccessCancelResponse
         )
     ),
     tags(
@@ -202,7 +224,8 @@ use crate::utils::{BaseResponse, ErrorResponse};
         (name = "RetroRoom", description = "회고방 관리 API"),
         (name = "Retrospect", description = "회고 API"),
         (name = "Response", description = "회고 답변 API"),
-        (name = "Member", description = "회원 API")
+        (name = "Member", description = "회원 API"),
+        (name = "Payment", description = "결제/구독 API")
     ),
     modifiers(&SecurityAddon),
     info(
@@ -255,9 +278,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     ));
     let ai_rate_limiters = std::sync::Arc::new(global::AiRateLimiters::new());
 
+    // FluxPay 클라이언트 초기화
+    let fluxpay_client = std::sync::Arc::new(
+        domain::payment::fluxpay_client::FluxPayClient::new(
+            config.fluxpay_url.clone(),
+            config.fluxpay_enabled,
+        ),
+    );
+
     info!(
         "Rate Limiter 설정: url={}, enabled={}",
         config.rate_limiter_url, config.rate_limiter_enabled
+    );
+    info!(
+        "FluxPay 설정: url={}, enabled={}",
+        config.fluxpay_url, config.fluxpay_enabled
     );
 
     // 애플리케이션 상태 생성
@@ -267,6 +302,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ai_service,
         rate_limit_client,
         ai_rate_limiters,
+        fluxpay_client,
     };
 
     // CORS 설정 — ALLOWED_ORIGINS 환경변수에서 읽기 (미설정 시 기본값 사용)
@@ -465,6 +501,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route(
             "/api/v1/retrospects/:retrospect_id/questions/:question_id/assistant",
             axum::routing::post(domain::retrospect::handler::assistant_guide),
+        )
+        // Payment APIs
+        .route(
+            "/api/v1/plans",
+            axum::routing::get(domain::payment::handler::list_plans),
+        )
+        .route(
+            "/api/v1/subscriptions/me",
+            axum::routing::get(domain::payment::handler::get_subscription),
+        )
+        .route(
+            "/api/v1/subscriptions",
+            axum::routing::post(domain::payment::handler::create_subscription),
+        )
+        .route(
+            "/api/v1/subscriptions/cancel",
+            axum::routing::post(domain::payment::handler::cancel_subscription),
+        )
+        .route(
+            "/api/v1/webhooks/fluxpay",
+            axum::routing::post(domain::payment::handler::handle_fluxpay_webhook),
         )
         .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
         // 레이어 순서: 아래에서 위로 적용됨
