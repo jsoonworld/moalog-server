@@ -1,0 +1,45 @@
+jolokia:
+  url: "http://fluxpay-engine:8778/jolokia"
+  timeout_ms: 5000
+
+server:
+  port: 9090
+  path: "/metrics"
+  bind_address: "0.0.0.0"
+
+lowercaseOutputName: true
+lowercaseOutputLabelNames: true
+
+whitelistObjectNames:
+  - "java.lang:*"
+  - "java.nio:*"
+  - "io.r2dbc:*"
+  - "io.lettuce.core:*"
+  - "reactor.netty:*"
+
+rules:
+  - pattern: 'java.lang<type=Memory><HeapMemoryUsage>(\w+)'
+    name: "jvm_memory_heap_$1_bytes"
+    type: gauge
+  - pattern: 'java.lang<type=Memory><NonHeapMemoryUsage>(\w+)'
+    name: "jvm_memory_nonheap_$1_bytes"
+    type: gauge
+  - pattern: 'java.lang<type=GarbageCollector,name=([^>]+)><CollectionCount>'
+    name: "jvm_gc_collection_count"
+    type: counter
+    labels:
+      gc: "$1"
+  - pattern: 'java.lang<type=GarbageCollector,name=([^>]+)><CollectionTime>'
+    name: "jvm_gc_collection_time_ms"
+    type: counter
+    labels:
+      gc: "$1"
+  - pattern: 'java.lang<type=Threading><(\w+)>'
+    name: "jvm_threads_$1"
+    type: gauge
+  - pattern: 'io.r2dbc<type=Pool><(\w+)>'
+    name: "r2dbc_pool_$1"
+    type: gauge
+  - pattern: 'io.lettuce.core<type=ConnectionPool><(\w+)>'
+    name: "lettuce_connection_pool_$1"
+    type: gauge

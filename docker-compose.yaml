@@ -53,6 +53,7 @@ services:
       - "${MYSQL_PORT:-3306}:3306"
     volumes:
       - mysql_data:/var/lib/mysql
+      - ./init-scripts/mysql-init.sql:/docker-entrypoint-initdb.d/01-exporter-user.sql:ro
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-moalog_local}"]
       interval: 10s
@@ -177,6 +178,64 @@ services:
       timeout: 5s
       start_period: 30s
       retries: 3
+    restart: unless-stopped
+
+  # ─── Redis Exporter ─────────────────────────────────
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.66.0
+    container_name: redis-exporter
+    environment:
+      REDIS_ADDR: "redis://redis:6379"
+    ports:
+      - "9121:9121"
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ─── MySQL Exporter ─────────────────────────────────
+  mysqld-exporter:
+    image: prom/mysqld-exporter:v0.16.0
+    container_name: mysqld-exporter
+    environment:
+      DATA_SOURCE_NAME: "exporter:exporter_password@(mysql:3306)/"
+    ports:
+      - "9104:9104"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ─── rJMX-Exporter (rate-limiter JVM) ──────────────
+  rjmx-exporter-rate-limiter:
+    build:
+      context: ../rJMX-Exporter
+      dockerfile: Dockerfile
+    platform: linux/amd64
+    container_name: rjmx-exporter-rate-limiter
+    volumes:
+      - ./monitoring/rjmx-exporter/rate-limiter.yaml:/config.yaml:ro
+    ports:
+      - "9093:9090"
+    depends_on:
+      rate-limiter:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ─── rJMX-Exporter (fluxpay JVM) ──────────────────
+  rjmx-exporter-fluxpay:
+    build:
+      context: ../rJMX-Exporter
+      dockerfile: Dockerfile
+    platform: linux/amd64
+    container_name: rjmx-exporter-fluxpay
+    volumes:
+      - ./monitoring/rjmx-exporter/fluxpay-engine.yaml:/config.yaml:ro
+    ports:
+      - "9094:9090"
+    depends_on:
+      fluxpay-engine:
+        condition: service_healthy
     restart: unless-stopped
 
   # ─── Prometheus ──────────────────────────────────────
