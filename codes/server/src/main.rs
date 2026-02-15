@@ -247,11 +247,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // AI 서비스 초기화
     let ai_service = domain::ai::service::AiService::new(&config);
 
+    // Rate Limiter 초기화
+    let rate_limit_client = std::sync::Arc::new(global::DistributedRateLimitClient::new(
+        config.rate_limiter_url.clone(),
+        config.rate_limiter_enabled,
+    ));
+    let ai_rate_limiters = std::sync::Arc::new(global::AiRateLimiters::new());
+
+    info!(
+        "Rate Limiter 설정: url={}, enabled={}",
+        config.rate_limiter_url, config.rate_limiter_enabled
+    );
+
     // 애플리케이션 상태 생성
     let app_state = AppState {
         db,
         config: config.clone(),
         ai_service,
+        rate_limit_client,
+        ai_rate_limiters,
     };
 
     // CORS 설정 — ALLOWED_ORIGINS 환경변수에서 읽기 (미설정 시 기본값 사용)
@@ -448,10 +462,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             axum::routing::post(domain::retrospect::handler::assistant_guide),
         )
         .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
-        // 레이어 순서: 아래에서 위로 적용됨 (request_id → cors → TraceLayer → handler)
+        // 레이어 순서: 아래에서 위로 적용됨
+        // global_rate_limit → request_id → cors → TraceLayer → handler
         .layer(TraceLayer::new_for_http())
         .layer(cors)
         .layer(axum::middleware::from_fn(global::request_id_middleware))
+        .layer(axum::middleware::from_fn_with_state(
+            app_state.clone(),
+            global::middleware::global_rate_limit_middleware,
+        ))
         .with_state(app_state);
 
     // 서버 시작

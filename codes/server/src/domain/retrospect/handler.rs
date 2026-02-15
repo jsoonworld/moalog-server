@@ -657,6 +657,9 @@ pub async fn analyze_retrospective_handler(
 
     let user_id = user.user_id()?;
 
+    // AI 분석 Rate Limit 체크 (유저별 5/min + OpenAI 전역 20/sec)
+    state.ai_rate_limiters.check_analysis(user_id)?;
+
     // 서비스 호출
     let result = RetrospectService::analyze_retrospective(state, user_id, retrospect_id).await?;
 
@@ -1057,6 +1060,9 @@ pub async fn assistant_guide(
     req.validate()?;
 
     let user_id = user.user_id()?;
+
+    // AI 가이드 Rate Limit 체크 (유저별 10/min + OpenAI 전역 20/sec)
+    state.ai_rate_limiters.check_guide(user_id)?;
 
     let result = RetrospectService::generate_assistant_guide(
         state,

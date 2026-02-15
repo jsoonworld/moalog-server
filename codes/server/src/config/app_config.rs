@@ -18,6 +18,10 @@ pub struct AppConfig {
 
     // AI Service
     pub openai_api_key: String,
+
+    // Rate Limiting
+    pub rate_limiter_url: String,
+    pub rate_limiter_enabled: bool,
 }
 
 impl AppConfig {
@@ -79,6 +83,14 @@ impl AppConfig {
             );
             "test-key".to_string()
         });
+
+        let rate_limiter_url = env::var("RATE_LIMITER_URL")
+            .unwrap_or_else(|_| "http://localhost:8082".to_string());
+        let rate_limiter_enabled = env::var("RATE_LIMITER_ENABLED")
+            .unwrap_or_else(|_| "true".to_string())
+            .parse()
+            .unwrap_or(true);
+
         Ok(Self {
             server_port,
             jwt_secret,
@@ -90,6 +102,8 @@ impl AppConfig {
             kakao_client_id,
             kakao_client_secret,
             openai_api_key,
+            rate_limiter_url,
+            rate_limiter_enabled,
         })
     }
 }

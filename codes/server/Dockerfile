@@ -1,7 +1,7 @@
 # ============================================================
 # Stage 1: Planner — 의존성 정보 추출
 # ============================================================
-FROM rust:1.83-bookworm AS planner
+FROM rust:1.85-bookworm AS planner
 
 RUN cargo install cargo-chef --locked
 WORKDIR /app
@@ -11,7 +11,7 @@ RUN cargo chef prepare --recipe-path recipe.json
 # ============================================================
 # Stage 2: Builder — 의존성 캐시 빌드 + 소스 빌드
 # ============================================================
-FROM rust:1.83-bookworm AS builder
+FROM rust:1.85-bookworm AS builder
 
 RUN cargo install cargo-chef --locked
 WORKDIR /app

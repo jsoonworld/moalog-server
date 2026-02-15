@@ -1,4 +1,43 @@
 services:
+  # ─── Redis ─────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: moalog-redis
+    command: redis-server --appendonly yes
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── Rate Limiter ──────────────────────────────────────
+  rate-limiter:
+    build:
+      context: ../distributed-rate-limiter
+      dockerfile: Dockerfile
+    container_name: moalog-rate-limiter
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    ports:
+      - "${RATE_LIMITER_PORT:-8082}:8080"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
+    restart: unless-stopped
+
   # ─── MySQL ────────────────────────────────────────────
   mysql:
     image: mysql:8.0
@@ -28,10 +67,12 @@ services:
     depends_on:
       mysql:
         condition: service_healthy
+      rate-limiter:
+        condition: service_healthy
     environment:
       DATABASE_URL: mysql://root:${MYSQL_ROOT_PASSWORD:-moalog_local}@mysql:3306/${MYSQL_DATABASE:-retrospect}
       DB_SCHEMA_UPDATE: "true"
-      SERVER_PORT: ${SERVER_PORT:-8080}
+      SERVER_PORT: 8080
       JWT_SECRET: ${JWT_SECRET:-local_dev_secret}
       JWT_EXPIRATION: ${JWT_EXPIRATION:-1800}
       REFRESH_TOKEN_EXPIRATION: ${REFRESH_TOKEN_EXPIRATION:-1209600}
@@ -44,6 +85,8 @@ services:
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:5173,http://localhost:5174}
       PDF_FONT_DIR: /app/fonts
       PDF_FONT_FAMILY: NanumGothic
+      RATE_LIMITER_URL: http://rate-limiter:8080
+      RATE_LIMITER_ENABLED: ${RATE_LIMITER_ENABLED:-true}
       RUST_LOG: ${RUST_LOG:-info,server=debug}
     ports:
       - "${SERVER_PORT:-8080}:8080"
@@ -51,3 +94,4 @@ services:
 
 volumes:
   mysql_data:
+  redis_data:

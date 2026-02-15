@@ -6,6 +6,7 @@ pub mod automation;
 pub mod config;
 pub mod domain;
 pub mod event;
+pub mod global;
 pub mod monitoring;
 pub mod state;
 pub mod utils;

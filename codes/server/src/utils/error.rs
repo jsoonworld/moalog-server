@@ -164,6 +164,9 @@ pub enum AppError {
 
     /// MEMBER4042: 존재하지 않는 사용자 (404)
     MemberNotFound(String),
+
+    /// RATE4291: 요청 한도 초과 (429)
+    RateLimitExceeded(String),
 }
 
 impl AppError {
@@ -220,6 +223,7 @@ impl AppError {
             AppError::PdfGenerationFailed(_) => "PDF 생성 중 서버 에러가 발생했습니다.".to_string(),
             AppError::RetroDeleteAccessDenied(msg) => msg.clone(),
             AppError::MemberNotFound(msg) => msg.clone(),
+            AppError::RateLimitExceeded(msg) => msg.clone(),
         }
     }
 
@@ -276,6 +280,7 @@ impl AppError {
             AppError::PdfGenerationFailed(_) => "COMMON500",
             AppError::RetroDeleteAccessDenied(_) => "RETRO4031",
             AppError::MemberNotFound(_) => "MEMBER4042",
+            AppError::RateLimitExceeded(_) => "RATE4291",
         }
     }
 
@@ -332,6 +337,7 @@ impl AppError {
             AppError::PdfGenerationFailed(_) => StatusCode::INTERNAL_SERVER_ERROR,
             AppError::RetroDeleteAccessDenied(_) => StatusCode::FORBIDDEN,
             AppError::MemberNotFound(_) => StatusCode::NOT_FOUND,
+            AppError::RateLimitExceeded(_) => StatusCode::TOO_MANY_REQUESTS,
         }
     }
 }
@@ -368,12 +374,25 @@ impl IntoResponse for AppError {
             AppError::PdfGenerationFailed(msg) => {
                 error!(error_code = %error_code, "PDF Generation Failed: {}", msg);
             }
+            AppError::RateLimitExceeded(msg) => {
+                tracing::warn!(error_code = %error_code, "Rate limit exceeded: {}", msg);
+            }
             _ => {
                 error!(error_code = %error_code, "Error: {}", message);
             }
         }
 
         let error_response = ErrorResponse::new(error_code, message);
+
+        // Rate Limit 초과 시 Retry-After 헤더 추가
+        if matches!(self, AppError::RateLimitExceeded(_)) {
+            let mut response = (status, Json(error_response)).into_response();
+            response.headers_mut().insert(
+                "Retry-After",
+                axum::http::HeaderValue::from_static("60"),
+            );
+            return response;
+        }
 
         (status, Json(error_response)).into_response()
     }

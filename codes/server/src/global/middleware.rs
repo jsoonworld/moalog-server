@@ -1,6 +1,13 @@
-use axum::{extract::Request, middleware::Next, response::Response};
+use axum::extract::{Request, State};
+use axum::http::StatusCode;
+use axum::middleware::Next;
+use axum::response::{IntoResponse, Response};
+use axum::Json;
 use tracing::Instrument;
 use uuid::Uuid;
+
+use crate::state::AppState;
+use crate::utils::response::ErrorResponse;
 
 // TODO: Phase 2에서 handler에서 RequestId 추출 시 사용 예정
 #[derive(Clone)]
@@ -42,4 +49,47 @@ pub async fn request_id_middleware(mut request: Request, next: Next) -> Response
     }
     .instrument(span)
     .await
+}
+
+/// 전역 API Rate Limit 미들웨어 (IP 기반, distributed-rate-limiter 연동)
+/// Fail Open 정책: rate-limiter 서비스 장애 시 요청 허용
+pub async fn global_rate_limit_middleware(
+    State(state): State<AppState>,
+    request: Request,
+    next: Next,
+) -> Response {
+    // 클라이언트 IP 추출
+    let client_ip = request
+        .headers()
+        .get("x-forwarded-for")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.split(',').next().unwrap_or("unknown").trim().to_string())
+        .or_else(|| {
+            request
+                .headers()
+                .get("x-real-ip")
+                .and_then(|v| v.to_str().ok())
+                .map(String::from)
+        })
+        .unwrap_or_else(|| "unknown".to_string());
+
+    let key = format!("global_api:ip:{}", client_ip);
+
+    match state.rate_limit_client.check(&key, "SLIDING_WINDOW").await {
+        Ok(result) if !result.allowed => {
+            let error_body = ErrorResponse::new(
+                "RATE4291",
+                "요청 한도를 초과했습니다. 잠시 후 다시 시도해주세요.",
+            );
+            let mut response = (StatusCode::TOO_MANY_REQUESTS, Json(error_body)).into_response();
+            if let Ok(val) = result.retry_after_seconds.to_string().parse() {
+                response.headers_mut().insert("Retry-After", val);
+            }
+            return response;
+        }
+        Ok(_) => { /* 허용 — 계속 진행 */ }
+        Err(()) => { /* Fail Open — 계속 진행 */ }
+    }
+
+    next.run(request).await
 }
