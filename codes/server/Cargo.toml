@@ -69,6 +69,9 @@ reqwest = { version = "0.13.1", features = ["json", "form"] }
 # Rate Limiting (in-process)
 governor = { version = "0.10", features = ["dashmap", "std"] }
 
+# Prometheus Metrics
+axum-prometheus = "0.7"
+
 [dev-dependencies]
 tokio-test = "0.4"
 tower = { version = "0.5", features = ["util"] }

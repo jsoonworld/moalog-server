@@ -28,6 +28,8 @@ services:
       SPRING_DATA_REDIS_PORT: 6379
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      ACTUATOR_USER: ${ACTUATOR_USER:-actuator}
+      ACTUATOR_PASSWORD: ${ACTUATOR_PASSWORD:-admin}
     ports:
       - "${RATE_LIMITER_PORT:-8082}:8080"
     healthcheck:
@@ -90,8 +92,55 @@ services:
       RUST_LOG: ${RUST_LOG:-info,server=debug}
     ports:
       - "${SERVER_PORT:-8080}:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/localhost/8080 && echo -e \"GET /health HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n\" >&3 && cat <&3 | grep -q healthy'"]
+      interval: 15s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+    restart: unless-stopped
+
+  # ─── Prometheus ──────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    container_name: moalog-prometheus
+    ports:
+      - "${PROMETHEUS_PORT:-9091}:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=15d'
+      - '--web.enable-lifecycle'
+    depends_on:
+      moalog-server:
+        condition: service_healthy
+      rate-limiter:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ─── Grafana ─────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:10.2.0
+    container_name: moalog-grafana
+    ports:
+      - "${GRAFANA_PORT:-3001}:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
     restart: unless-stopped
 
 volumes:
   mysql_data:
   redis_data:
+  prometheus_data:
+  grafana_data:

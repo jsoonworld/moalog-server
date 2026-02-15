@@ -1,0 +1,22 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'moalog-server'
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+    static_configs:
+      - targets: ['moalog-server:8080']
+
+  - job_name: 'rate-limiter'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['rate-limiter:8080']
+    basic_auth:
+      username: actuator
+      password: admin

@@ -11,6 +11,7 @@ mod utils;
 
 use axum::http::{header, HeaderValue, Method};
 use axum::{routing::get, Router};
+use axum_prometheus::PrometheusMetricLayer;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 use tracing::{info, warn};
@@ -303,6 +304,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
+    // Prometheus 메트릭 레이어 초기화
+    let (prometheus_layer, metric_handle) = PrometheusMetricLayer::pair();
+
     info!("CORS 허용 오리진 수: {}", origins.len());
 
     let cors = CorsLayer::new()
@@ -326,6 +330,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 라우터 구성
     let app = Router::new()
         .route("/health", get(health_check))
+        .route("/metrics", get(|| async move { metric_handle.render() }))
         // [API-001] 소셜 로그인
         .route(
             "/api/v1/auth/social-login",
@@ -463,8 +468,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
         // 레이어 순서: 아래에서 위로 적용됨
-        // global_rate_limit → request_id → cors → TraceLayer → handler
+        // global_rate_limit → request_id → cors → TraceLayer → prometheus → handler
         .layer(TraceLayer::new_for_http())
+        .layer(prometheus_layer)
         .layer(cors)
         .layer(axum::middleware::from_fn(global::request_id_middleware))
         .layer(axum::middleware::from_fn_with_state(
